@@ -108,6 +108,16 @@ Proof.
   reflexivity.
 Qed.
 
+Fixpoint drop {A : Type} x env : environment A :=
+  match env with
+    | Empty =>
+      Empty _
+    | Extend x' a env' =>
+      if beq_nat x x'
+      then drop x env'
+      else Extend _ x' a (drop x env')
+  end.
+
 Definition distinct {A : Type} (env : environment A) :=
   forall x v,
     lookup x env = Some v ->
