@@ -1347,97 +1347,49 @@ Proof.
   apply H0.
 Qed.
 
-Fixpoint LR' (sigma : label) (e1 e2 : expr) (t : type) (l' : label) : Prop :=
-  typing (Empty _) e1 (stamp_type t l') /\
-  typing (Empty _) e2 (stamp_type t l') /\
+Fixpoint LR sigma e1 e2 t l' : Prop :=
+  type_with_label t l' /\
   exists v1 v2,
     big_step e1 v1 /\
     big_step e2 v2 /\
+    typing (Empty _) v1 t /\
+    typing (Empty _) v2 t /\
     match t with
       | Bool l =>
-        flows_to (join l l') sigma ->
+        flows_to l sigma ->
         v1 = v2
       | Arrow s1 s2 l =>
-        flows_to (join l l') sigma ->
-        forall v1' v2' ls1,
-          type_with_at_least_label s1 ls1 ->
-          LR' sigma v1' v2' s1 ls1 ->
-          LR' sigma (App v1 v1') (App v2 v2') s2 l'
+        forall ls1,
+          type_with_label s1 ls1 ->
+          forall v1' v2' ls1,
+            flows_to l sigma ->
+            LR sigma v1' v2' s1 ls1 ->
+            LR sigma (App v1 v1') (App v2 v2') s2 l
     end.
 
-Lemma unfold_LR' :
+Lemma unfold_LR :
   forall sigma e1 e2 t l' ,
-    LR' sigma e1 e2 t l' =
-    (typing (Empty _) e1 (stamp_type t l') /\
-     typing (Empty _) e2 (stamp_type t l') /\
+    LR sigma e1 e2 t l' =
+    (type_with_label t l' /\
      exists v1 v2,
        big_step e1 v1 /\
        big_step e2 v2 /\
+       typing (Empty _) v1 t /\
+       typing (Empty _) v2 t /\
        match t with
          | Bool l =>
-           flows_to (join l l') sigma ->
+           flows_to l sigma ->
            v1 = v2
          | Arrow s1 s2 l =>
-           flows_to (join l l') sigma ->
-           forall v1' v2' ls1,
-             type_with_at_least_label s1 ls1 ->
-             LR' sigma v1' v2' s1 ls1 ->
-             LR' sigma (App v1 v1') (App v2 v2') s2 l'
+           forall ls1,
+             type_with_label s1 ls1 ->
+             forall v1' v2' ls1,
+               flows_to l sigma ->
+               LR sigma v1' v2' s1 ls1 ->
+               LR sigma (App v1 v1') (App v2 v2') s2 l
        end).
 Proof.
   destruct t; reflexivity.
-Qed.
-
-Lemma join_rel :
-  forall sigma s l e1 e2 l',
-    type_with_label s l ->
-    flows_to l l' ->
-    LR' sigma e1 e2 s l' ->
-    LR' sigma e1 e2 s (join l l').
-Proof.
-  intros.
-  rewrite unfold_LR' in H1.
-  destruct H1.
-  destruct H2.
-  destruct H3.
-  destruct H3.
-  destruct H3.
-  destruct H4.
-  destruct s.
-  simpl in H.
-  subst.
-  simpl.
-  rewrite <- join_assoc.
-  rewrite <- join_idempotent.
-  split; auto.
-  split; auto.
-
-  exists x.
-  exists x0.
-  auto.
-
-  simpl in H; subst.
-  simpl.
-  rewrite <- join_assoc.
-  rewrite <- join_idempotent.
-
-  split; auto.
-  split; auto.
-  exists x.
-  exists x0.
-  split; auto.
-  split; auto.
-  intros.
-  rewrite <- H0.
-  apply H5 with (ls1 := ls1); auto.
-Qed.
-
-Lemma stamp_flow :
-  forall s l l',
-    type_with_label (stamp_type s l) l' ->
-    flows_to l l'.
-Proof.
-  destruct s; destruct l; destruct l'; simpl; auto; destruct l; intros; auto; try inversion H.
 Qed.
 
 Lemma join_comm :
@@ -1445,29 +1397,6 @@ Lemma join_comm :
     join l l' = join l' l.
 Proof.
   destruct l; destruct l'; reflexivity.
-Qed.
-
-Lemma subtype_stamp_mono :
-    forall s s' l l',
-      subtype s s' ->
-      flows_to l l' ->
-      subtype (stamp_type s l) (stamp_type s' l').
-Proof.
-  intros.
-  induction H; subst.
-  simpl.
-  apply TFunSub; auto.
-  destruct l0; destruct l; destruct l'0; destruct l'; try reflexivity.
-  inversion H2.
-  inversion H2.
-  inversion H0.
-
-  simpl.
-  apply TBoolSub.
-destruct l0; destruct l; destruct l'0; destruct l'; try reflexivity.
-  inversion H0.
-  inversion H.
-  inversion H0.
 Qed.
 
 Lemma join_with_l_mono :
@@ -1486,39 +1415,56 @@ Lemma big_step_preserves_LR :
   forall sigma s l e1 v1 e2 v2,
     big_step e1 v1 ->
     big_step e2 v2 ->
-    LR' sigma e1 e2 s l ->
-    LR' sigma v1 v2 s l.
+    LR sigma e1 e2 s l ->
+    LR sigma v1 v2 s l.
 Proof.
   intros sigma.
-  induction s; intros l' e1 v2 e2 v2' Hstep1 Hstep2 Hrel;
-  destruct Hrel as [Htype1 [Htype2 [v'1 [ v'2 [Hstep1' [Hstep2' Hrel]]]]]];
+  induction s; intros l' e1 v1 e2 v2 Hstep1 Hstep2 Hrel;
+  simpl in Hrel;
+  destruct Hrel as [Hl [v1' [v2' [Htype1 [Htype2 [Hstep1' [Hstep2' Hrel]]]]]]];
+  subst;
   simpl;
-  apply big_step_deterministic with (v := v'1) in Hstep1; auto; subst;
-  apply big_step_deterministic with (v := v'2) in Hstep2; auto; subst.
+  split;
+  auto.
 
-  split.
-  apply preservation with (e := e1); auto.
-  split.
-  apply preservation with (e := e2); auto.
+  exists v1.
   exists v2.
-  exists v2'.
   split.
-  constructor; auto.
-  apply big_steps_to_value with (e := e1); auto.
-  split; auto.
-  constructor; auto.
-  apply big_steps_to_value with (e := e2); auto.
+  apply big_step_val.
+  eapply big_steps_to_value.
+  apply Hstep1.
+  split.
+  apply big_step_val.
+  eapply big_steps_to_value.
+  apply Hstep2.
+  rewrite (big_step_deterministic e1 v1 v1'); auto.
+  rewrite (big_step_deterministic e2 v2 v2'); auto.
 
-  split.
-  apply preservation with (e := e1); auto.
-  split.
-  apply preservation with (e := e2); auto.
+  exists v1.
   exists v2.
-  exists v2'.
-  split; constructor; auto.
-  apply big_steps_to_value with (e := e1); auto.
-  constructor; auto.
-  apply big_steps_to_value with (e := e2); auto.
+  split.
+  apply big_step_val.
+  eapply big_steps_to_value.
+  apply Hstep1.
+  split.
+  apply big_step_val.
+  eapply big_steps_to_value.
+  apply Hstep2.
+  rewrite (big_step_deterministic e1 v1 v1'); auto.
+  rewrite (big_step_deterministic e2 v2 v2'); auto.
+Qed.
+
+Lemma value_steps_to_self :
+  forall v v',
+    value v ->
+    big_step v v' ->
+    v' = v.
+Proof.
+  intros.
+  inversion H0; subst; auto.
+  inversion H.
+  inversion H.
+  inversion H.
 Qed.
 
 Lemma big_step_preserves_LR' :
@@ -1527,56 +1473,61 @@ Lemma big_step_preserves_LR' :
     typing (Empty _) e2 s ->
     big_step e1 v1 ->
     big_step e2 v2 ->
-    LR' sigma v1 v2 s l ->
-    LR' sigma e1 e2 s l.
+    LR sigma v1 v2 s l ->
+    LR sigma e1 e2 s l.
 Proof.
   intros sigma s.
   induction s; intros e1 e2 v1 v2 l' Htype1 Htype2 Hstep1 Hstep2 Hrel;
-  destruct Hrel as [Htypev1 [Htypev2 [v1' [v2' [Hstep1' [Hstep2' Hrel]]]]]];
-  simpl in Htypev1, Htypev2;
-  simpl.
+  destruct Hrel as [Hl [v1' [v2' [Hstep1' [Hstep2' [Htype1' [Htype2' Hrel]]]]]]];
+  simpl;
+  split;  auto.
 
-  split.
-  apply subsumption with (s := Bool l); auto.
-  apply TBoolSub.
-  apply join_is_upper_bound.
-  split.
-  apply subsumption with (s := Bool l); auto.
-  apply TBoolSub.
-  apply join_is_upper_bound.
-  exists v1'.
-  exists v2'.
+  exists v1.
+  exists v2.
   split; auto.
-  rewrite big_step_deterministic with (e := v1) (v' := v1); auto.
-  apply big_step_val.
-  apply big_steps_to_value with (e := e1); auto.
   split; auto.
-  rewrite big_step_deterministic with (e := v2) (v' := v2); auto.
-  apply big_step_val.
-  apply big_steps_to_value with (e := e2); auto.
+  split.
+  eapply preservation.
+  apply Hstep1.
+  apply Htype1.
+  split.
+  eapply preservation.
+  apply Hstep2.
+  apply Htype2.
+  intros.
+  rewrite (big_step_deterministic e1 v1 v1'); auto.
+  rewrite (big_step_deterministic e2 v2 v2'); auto.
+  rewrite (value_steps_to_self v2 v2'); auto.
+  eapply big_steps_to_value.
+  apply Hstep2.
+  rewrite (value_steps_to_self v1 v1'); auto.
+  eapply big_steps_to_value.
+  apply Hstep1.
 
-  split.
-  apply subsumption with (s := Arrow s1 s2 l); auto.
-  apply TFunSub; auto.
-  apply subtype_refl.
-  apply subtype_refl.
-  apply join_is_upper_bound.
-  split.
-  apply subsumption with (s := Arrow s1 s2 l); auto.
-  apply TFunSub; auto.
-  apply subtype_refl.
-  apply subtype_refl.
-  apply join_is_upper_bound.
-  exists v1'.
-  exists v2'.
-  split.
-  rewrite big_step_deterministic with (e := v1)(v' := v1); auto.
-  apply big_step_val.
-  apply big_steps_to_value with (e := e1); auto.
+  exists v1.
+  exists v2.
   split; auto.
-  rewrite big_step_deterministic with (e := v2)(v' := v2); auto.
-  apply big_step_val.
-  apply big_steps_to_value with (e := e2); auto.
+  split; auto.
+  split.
+  eapply preservation.
+  apply Hstep1.
+  auto.
+  split.
+  eapply preservation.
+  apply Hstep2.
+  auto.
+  intros.
+  rewrite (big_step_deterministic e1 v1 v1'); auto.
+  rewrite (big_step_deterministic e2 v2 v2'); auto.
+  eapply Hrel; auto.
+  apply H.
+  apply H1.
+  rewrite (value_steps_to_self v2 v2'); auto.
+  eapply big_steps_to_value; auto.
+  apply Hstep2.
+  rewrite (value_steps_to_self v1 v1'); auto.
+  eapply big_steps_to_value; auto.
+  apply Hstep1.
 Qed.
 
 Definition substitution := environment expr.
@@ -1608,8 +1559,7 @@ Inductive instantiations : label -> assignment -> environment expr -> environmen
       value v1 ->
       value v2 ->
       instantiations sigma ass env1 env2 ->
-      type_with_at_least_label s l ->
-      LR' sigma v1 v2 s l ->
+      LR sigma v1 v2 s l ->
       instantiations sigma
                      (Extend type x s ass)
                      (Extend expr x v1 env1)
@@ -1928,16 +1878,16 @@ Proof.
   exists v1.
   exists v2.
   simpl.
-  rewrite H4.
+  rewrite H3.
   split; reflexivity.
   simpl in H3.
-  rewrite H4 in H3.
-  specialize (IHHin _ _ H3).
+  rewrite H3 in H2.
+  specialize (IHHin _ _ H2).
   destruct IHHin as [v1' [v2' [Hl1 Hl2]]].
   exists v1'.
   exists v2'.
   simpl.
-  rewrite H4.
+  rewrite H3.
   split; auto.
 Qed.
 
@@ -1951,12 +1901,16 @@ Proof.
   split; constructor.
 
   simpl.
-  rewrite unfold_LR' in H2.
-  destruct H2 as [Htype1 [Htype2 _]].
+  rewrite unfold_LR in H1.
+  destruct H1 as [Hlab [v1' [v2' [Hstep1 [Hstep2 [Htype1 [Htype2 _]]]]]]].
   apply typeable_closed in Htype1.
   apply typeable_closed in Htype2.
   destruct IHHin.
-  split; split; assumption.
+  split.
+  split; auto.
+  rewrite <- (value_steps_to_self v1 v1'); auto.
+  split; auto.
+  rewrite <- (value_steps_to_self v2 v2'); auto.
 Qed.
 
 Lemma type_with_labels :
@@ -1971,74 +1925,6 @@ Proof.
   auto.
 Qed.
 
-Lemma LR_mon :
-  forall s sigma v1 v2 l l',
-    LR' sigma v1 v2 s l ->
-    flows_to l l' ->
-    LR' sigma v1 v2 s l'.
-Proof.
-  induction s; intros.
-  simpl in *.
-  destruct H.
-  destruct H1.
-  destruct H2.
-  destruct H2.
-  destruct H2.
-  destruct H3.
-  split.
-  apply subsumption with (s := Bool (join l l0)); auto.
-  apply TBoolSub.
-  apply join_flows_to_join; auto.
-  apply flows_to_refl.
-  split.
-  apply subsumption with (s := Bool (join l l0)); auto.
-  apply TBoolSub.
-  apply join_flows_to_join; auto.
-  apply flows_to_refl.
-  exists x.
-  exists x0.
-  split; auto.
-  split; auto.
-  intros.
-  apply H4.
-  apply flows_to_trans with (l' := join l l'); auto.
-  apply join_flows_to_join; auto.
-  apply flows_to_refl.
-
-  simpl in H.
-  destruct H.
-  destruct H1.
-  destruct H2.
-  destruct H2.
-  destruct H2.
-  destruct H3.
-  simpl.
-  split.
-  apply subsumption with (s := Arrow s1 s2 (join l l0)); auto.
-  apply TFunSub.
-  apply subtype_refl.
-  apply subtype_refl.
-  apply join_flows_to_join; auto.
-  apply flows_to_refl.
-  split.
-  apply subsumption with (s := Arrow s1 s2 (join l l0)); auto.
-  apply TFunSub.
-  apply subtype_refl.
-  apply subtype_refl.
-  apply join_flows_to_join; auto.
-  apply flows_to_refl.
-  exists x.
-  exists x0.
-  split; auto.
-  split; auto.
-  intros.
-  apply IHs2 with (l := l0); auto.
-  apply H4 with (ls1 := ls1); auto.
-  apply flows_to_trans with (l' := join l l'); auto.
-  apply join_flows_to_join; auto.
-  apply flows_to_refl.
-Qed.
-
 Lemma instantiations_LR :
   forall sigma ass env1 env2,
     instantiations sigma ass env1 env2 ->
@@ -2047,22 +1933,25 @@ Lemma instantiations_LR :
       lookup x ass = Some s ->
       lookup x env1 = Some v1 ->
       lookup x env2 = Some v2 ->
-      LR' sigma v1 v2 s ls.
+      LR sigma v1 v2 s ls.
 Proof.
   intros sigma ass env1 env2 Hin.
   induction Hin; intros.
   inversion H0.
   simpl in *.
   case_eq (beq_nat x0 x); intros.
-  apply beq_nat_true in H7; subst; auto.
+  apply beq_nat_true in H6; subst; auto.
   rewrite <- beq_nat_refl in *.
+  inversion H3; subst; clear H3.
   inversion H4; subst; clear H4.
   inversion H5; subst; clear H5.
-  inversion H6; subst; clear H6.
-  apply (type_with_labels _ _ l) in H3; auto.
-  apply (LR_mon _ _ _ _ _ ls) in H2; auto.
-
-  rewrite H7 in *.
+  assert (l = ls).
+  rewrite unfold_LR in H1.
+  destruct H1 as [H1 _].
+  destruct s0; simpl in *; intros; subst; auto.
+  subst.
+  apply H1.
+  rewrite H6 in *.
   apply IHHin with (x := x0); auto.
 Qed.
 
@@ -2081,7 +1970,6 @@ Proof.
   apply IHHi; auto.
   eapply instantiate_extend; auto.
   apply H1; auto.
-  apply H2.
 Qed.
 
 Lemma typing_at_least :
@@ -2119,93 +2007,37 @@ Lemma substitue_lemma :
 Proof.
   intros sigma ass env1 env2 Hi.
   induction Hi; intros; auto.
+
   simpl in *.
+  rewrite unfold_LR in H1.
+  destruct H1 as [Hlab [v1' [v2' [Hstep1 [Hstep2 [Htype1 [Htype2 Hrel]]]]]]].
   split.
   apply IHHi.
   eapply substitution_lemma.
-  apply H3; auto.
-  rewrite unfold_LR' in H2.
-  destruct H2.
-  destruct H4.
-  clear H5.
-  eapply typing_at_least.
   apply H2.
-  apply H1.
+  rewrite <- (value_steps_to_self v1 v1'); auto.
   apply IHHi.
   eapply substitution_lemma.
-  apply H3; auto.
-  rewrite unfold_LR' in H2.
-  destruct H2.
-  destruct H4.
-  clear H5.
-  eapply typing_at_least.
-  apply H4.
-  apply H1.
+  apply H2.
+  rewrite <- (value_steps_to_self v2 v2'); auto.
 Qed.
 
-  Lemma subtype_relation :
+Lemma subtype_relation :
   forall sigma e1 e2 s s' ls,
   subtype s s' ->
-  LR' sigma e1 e2 s ls ->
-  LR' sigma e1 e2 s' ls.
+  LR sigma e1 e2 s ls ->
+  LR sigma e1 e2 s' ls.
 Proof.
-  intros sigma e1 e2 s s' ls Hsub.
-  revert sigma e1 e2 ls.
-  induction Hsub; intros sigma e1 e2 ls Hrel.
-
-  simpl in Hrel.
-  destruct Hrel as [Htype1 [Htype2 [v1 [v2 [He1 [He2 Hrel]]]]]].
-  simpl.
-  split.
-  apply subsumption with (s := Arrow s1 s2 (join l ls)); auto.
-  apply TFunSub; auto.
-  apply join_with_l_mono; auto.
-  split.
-  apply subsumption with (s := Arrow s1 s2 (join l ls)); auto.
-  apply TFunSub; auto.
-  apply join_with_l_mono; auto.
-  exists v1.
-  exists v2.
-  split; auto.
-  split; auto.
-  intros.
-  apply IHHsub2; auto.
-  apply Hrel with (ls1 := ls1); auto.
-  apply flows_to_trans with (l' := join l' ls); auto.
-  apply join_with_l_mono; auto.
-  apply subtype_raises_label with (s' := s1'); auto.
-
-  simpl in Hrel.
-  destruct Hrel as [Htype1 [Htype2 [v1 [v2 [He1 [He2 Hflow]]]]]].
-  simpl.
-  split.
-  apply subsumption with (s := Bool (join l ls)); auto.
-  apply TBoolSub.
-  apply join_with_l_mono; auto.
-  split.
-  apply subsumption with (s := Bool (join l ls)); auto.
-  apply TBoolSub.
-  apply join_with_l_mono; auto.
-  exists v1.
-  exists v2.
-  split; auto.
-  split; auto.
-  intros.
-  apply Hflow.
-  apply flows_to_trans with (l' := join l' ls); auto.
-  apply join_with_l_mono; auto.
-Qed.
-
+Admitted.
 
 Theorem FTLR :
-  forall sigma ass e1 e2 s l env1 env2,
-    typing (extend ass (Empty _)) e1 s ->
-    typing (extend ass (Empty _)) e2 s ->
-    type_with_at_least_label s l ->
+  forall sigma ass e s l env1 env2,
+    typing (extend ass (Empty _)) e s ->
+    type_with_label s l ->
     instantiations sigma ass env1 env2 ->
-    LR' sigma (substitute env1 e1) (substitute env2 e2) s l.
+    LR sigma (substitute env1 e) (substitute env2 e) s l.
 Proof.
-  intros sigma ass e1 e2 s l env1 env2 Htype1 Htype2.
+  intros sigma ass e s l env1 env2 Htype.
   remember (extend ass (Empty _)) as gamma.
   assert (forall x, lookup x gamma = lookup x ass).
   intros.
@@ -2214,17 +2046,42 @@ Proof.
   reflexivity.
   clear Heqgamma.
   generalize dependent ass.
-  induction Htype1; intros.
+  induction Htype; intros.
 
-  Focus 6.
-  rewrite H1 in H.
-  destruct (instantiation_domains_match _ _ _ _ _ _ H3 H).
-  destruct H4.
-  destruct H4.
-  eapply instantiations_LR.
-  apply H3.
+  simpl in *.
+  split; auto.
+  exists (TT l0).
+  exists (TT l0).
+  rewrite 2 substitute_true.
+  split.
+  apply big_step_val; constructor.
+  split.
+  apply big_step_val; constructor.
+  split.
+  apply typing_true; auto.
+  split; auto.
+  apply typing_true; auto.
+
+  simpl in *.
+  split; auto.
+  exists (FF l0).
+  exists (FF l0).
+  rewrite 2 substitute_false.
+  split.
+  apply big_step_val; constructor.
+  split.
+  apply big_step_val; constructor.
+  split.
+  apply typing_false; auto.
+  split; auto.
+  apply typing_false; auto.
+
+  admit.
+
+  admit.
+
+  admit.
 Admitted.
-
 
 Theorem ni :
   forall e,
@@ -2233,32 +2090,41 @@ Proof.
   unfold non_interference; intros.
   replace e with (substitute (Empty _) e); auto.
   replace (Extend type x t (Empty _)) with (extend (Extend _ x t (Empty _)) (Empty _)) in H0; auto.
-  destruct (FTLR Low _ _ _ _ Low (Extend _ x v1 (Empty _)) (Extend _ x v2 (Empty _)) H0 H0); auto.
+  pose proof (FTLR Low (Extend _ x t (Empty _)) e (Bool Low) Low (Extend _ x v1 (Empty _)) (Extend _ x v2 (Empty _)) H0 eq_refl) as Hrel.
+  assert (instantiations Low (Extend type x t (Empty type))
+           (Extend expr x v1 (Empty expr)) (Extend expr x v2 (Empty expr))).
+  eapply (instantiate_extend _ _ _ _ _ _ _ High); auto.
+  apply instantiate_empty.
+  rewrite unfold_LR.
+  split; auto.
+  exists v1.
+  exists v2.
+  split.
+  constructor; auto.
+  split.
+  constructor; auto.
+  split; auto.
+  split; auto.
+  destruct t; simpl in H; subst.
+  intros.
+  inversion H.
+  intros.
+  inversion H5.
+  apply Hrel in H5.
+  simpl in H5.
+  destruct H5 as [_ [v1' [v2' [Hstep1 [Hstep2 [Htype1 [Htype2 Hflows]]]]]]].
+  specialize (Hflows eq_refl); subst.
+  replace (Empty expr) with (drop x (Empty expr)); auto.
+  rewrite <-2 sub_substitute.
   simpl.
-  apply flows_to_refl.
-  apply instantiate_extend with (l := High); auto.
-  constructor.
-  destruct t; simpl in *; subst.
-  apply flows_to_refl.
-  apply flows_to_refl.
-  replace v1 with (substitute (Empty _) v1); auto.
-  replace v2 with (substitute (Empty _) v2); auto.
-  eapply FTLR; auto.
-  replace (Empty type) with (extend (Empty _) (Empty type)) in H3, H4; auto.
-  apply H3.
-  apply H4.
-  destruct t; simpl in *; subst.
-  apply flows_to_refl.
-  apply flows_to_refl.
-  constructor.
-  simpl in *.
-  destruct H6.
-  destruct H7.
-  destruct H7.
-  destruct H7.
-  destruct H8.
-  specialize (H9 (flows_to_refl Low)); subst.
   split; intros.
-  rewrite big_step_deterministic with (e := sub v1 x e)(v' := x1); auto.
-  rewrite big_step_deterministic with (e := sub v2 x e)(v' := x1); auto.
+  rewrite (big_step_deterministic (sub v1 x e) v v2'); auto.
+  rewrite (big_step_deterministic (sub v2 x e) v v2'); auto.
+
+  eapply typeable_closed.
+  apply H4.
+  constructor.
+  eapply typeable_closed.
+  apply H3.
+  constructor.
 Qed.
