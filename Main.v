@@ -1880,7 +1880,7 @@ Proof.
   simpl.
   rewrite H3.
   split; reflexivity.
-  simpl in H3.
+  simpl in H2.
   rewrite H3 in H2.
   specialize (IHHin _ _ H2).
   destruct IHHin as [v1' [v2' [Hl1 Hl2]]].
@@ -2023,10 +2023,11 @@ Proof.
 Qed.
 
 Lemma subtype_relation :
-  forall sigma e1 e2 s s' ls,
-  subtype s s' ->
-  LR sigma e1 e2 s ls ->
-  LR sigma e1 e2 s' ls.
+  forall sigma e1 e2 s s' ls ls',
+    subtype s s' ->
+    LR sigma e1 e2 s ls ->
+    type_with_label s' ls' ->
+    LR sigma e1 e2 s' ls'.
 Proof.
 Admitted.
 
@@ -2046,12 +2047,13 @@ Proof.
   reflexivity.
   clear Heqgamma.
   generalize dependent ass.
+  revert l.
   induction Htype; intros.
 
-  simpl in *.
+  simpl in *; subst.
   split; auto.
-  exists (TT l0).
-  exists (TT l0).
+  exists (TT l).
+  exists (TT l).
   rewrite 2 substitute_true.
   split.
   apply big_step_val; constructor.
@@ -2062,10 +2064,10 @@ Proof.
   split; auto.
   apply typing_true; auto.
 
-  simpl in *.
+  simpl in *; subst.
   split; auto.
-  exists (FF l0).
-  exists (FF l0).
+  exists (FF l).
+  exists (FF l).
   rewrite 2 substitute_false.
   split.
   apply big_step_val; constructor.
@@ -2078,10 +2080,32 @@ Proof.
 
   admit.
 
+
+
   admit.
 
   admit.
-Admitted.
+
+  destruct (all_types_have_label s) as [ls Hl].
+  eapply (subtype_relation _ _ _ _ _ ls l).
+  apply H0.
+  rewrite 2 substitute_var.
+  specialize (H1 x).
+  rewrite H in H1.
+  symmetry in H1.
+  pose proof (instantiation_domains_match ass sigma env1 env2 x s H3 H1).
+  destruct H4.
+  destruct H4.
+  destruct H4.
+  rewrite H4, H5.
+  eapply (instantiations_LR sigma ass env1 env2 H3); auto.
+  apply H1.
+  auto.
+  auto.
+  apply (instantiation_envs_closed _ _ _ _ H3).
+  apply (instantiation_envs_closed _ _ _ _ H3).
+  auto.
+Qed.
 
 Theorem ni :
   forall e,
